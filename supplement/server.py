@@ -1,5 +1,9 @@
 import sys
 import os.path
+import optparse
+import logging
+
+logger = logging.getLogger('supplement')
 
 try:
     from cPickle import loads, dumps
@@ -64,8 +68,7 @@ class Server(object):
             is_ok = True
             result = getattr(self, name)(*args, **kwargs)
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.exception(e)
             is_ok = False
             result = e.__class__.__name__, str(e)
 
@@ -116,25 +119,49 @@ class Server(object):
                         self.conn.send_bytes(dumps((result, is_ok), 2))
                     except:
                         import traceback
-                        traceback.print_exc()
-
-if __name__ == '__main__':
+                        exc = traceback.format_exc()
+                        logger.exception(exc)
+                        
+def main():
     import os
     from multiprocessing.connection import Listener
-    import logging
+    usage = '''%prog [options] ADDRESS 
+    
+    where ADDRESS is the address where the server is listening.
+    '''
+    parser = optparse.OptionParser(usage)
+    parser.add_option("-q", "--quiet", action="store_true", dest="quiet",
+                      help="Do not print anything to the console.")
+    parser.add_option("-l", "--logfile", action="store", type="string",
+                      dest="logfile", default="", metavar="FILE",
+                      help="log messages to FILE.")
 
     if 'SUPP_LOG_LEVEL' in os.environ:
         level = int(os.environ['SUPP_LOG_LEVEL'])
     else:
         level = logging.ERROR
 
-    logger = logging.getLogger('supplement')
+    options, args = parser.parse_args()
+    
+    if len(args) != 1:
+        parser.error("Incorrect number of arguments, expect exactly one address.")
+    
     logger.setLevel(level)
     handler = logging.StreamHandler()
+    if options.quiet:
+        handler.setLevel(logging.CRITICAL)
     handler.setFormatter(logging.Formatter("%(name)s %(levelname)s: %(message)s"))
     logger.addHandler(handler)
-
-    listener = Listener(sys.argv[1])
+    
+    if len(options.logfile) > 0:
+        handler = logging.FileHandler(options.logfile, mode='w')
+        handler.setFormatter(logging.Formatter("%(name)s %(levelname)s: %(message)s"))
+        logger.addHandler(handler)
+        
+    listener = Listener(args[0])
     conn = listener.accept()
     server = Server(conn)
     server.run()
+
+if __name__ == '__main__':
+    main()
