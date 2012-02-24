@@ -65,6 +65,18 @@ def test_assist_for_relative_star_imported_names(project):
 
     assert result == ['test']
 
+def test_assist_for_import_as(project):
+    project.create_module('toimport', '''
+        test = 1
+    ''')
+
+    result = do_assist(project, '''
+        import toimport as foo
+        foo.te''')
+
+    assert result == ['test']
+
+
 def test_assist_for_function_names(project):
     result = do_assist(project, '''
         test1 = 1
