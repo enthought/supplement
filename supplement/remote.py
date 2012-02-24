@@ -44,7 +44,12 @@ class Environment(object):
         else:
             addr = arbitrary_address('AF_UNIX')
 
-        supp_server = os.path.join(os.path.dirname(__file__), 'server.py')
+        for ext in ('.py', '.pyc', '.pyo'):
+            supp_server = os.path.join(os.path.dirname(__file__), 'server' + ext)
+            if os.path.exists(supp_server):
+                break
+        else:
+            raise RuntimeError('Unable to find supplement server, %s'%supp_server)
         args = [self.executable, supp_server, addr] + self.extra_args
 
         env = None
