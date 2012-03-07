@@ -2,6 +2,7 @@ import sys
 import os.path
 import optparse
 import logging
+import imp
 
 logger = logging.getLogger('supplement')
 
@@ -11,7 +12,11 @@ except ImportError:
     from pickle import loads, dumps
 
 try:
-    import supplement
+    # Don't import supplement since that might be the wrong supplement
+    # version -- this happens when the server is run using a different version
+    # of Python.  Instead, use our path and have the imp module import it.
+    supplement = imp.load_module('supplement', None, os.path.dirname(__file__),
+                                 ("", "", imp.PKG_DIRECTORY))
 except ImportError:
     fname = os.__file__
     if fname.endswith('.pyc'):
