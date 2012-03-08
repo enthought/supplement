@@ -110,8 +110,8 @@ class Environment(object):
         else:
             raise Exception(result)
 
-    def get_fixed_source(self, project_path, source):
-        return self._call('get_fixed_source', project_path, source)
+    def get_fixed_source(self, project_path, source, lineno):
+        return self._call('get_fixed_source', project_path, source, lineno)
 
     def lint(self, project_path, source, filename, syntax_only=False):
         return self._call('lint', project_path, source, filename, syntax_only)

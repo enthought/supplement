@@ -74,8 +74,8 @@ class Server(object):
 
         return result, is_ok
 
-    def get_fixed_source(self, path, source):
-        return get_fixed_source(self.get_project(path), source)
+    def get_fixed_source(self, path, source, lineno):
+        return get_fixed_source(self.get_project(path), source, lineno)
 
     def assist(self, path, source, position, filename):
         return assist(self.get_project(path), source, position, filename)
