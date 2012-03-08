@@ -274,9 +274,9 @@ def get_context(source, position):
 
     return ctype, lineno, ctx, match, fctx
 
-def get_fixed_source(project, source):
+def get_fixed_source(project, source, lineno):
     source = sanitize_encoding(source)
-    ast_nodes, fixed_source = fix(source)
+    ast_nodes, fixed_source = fix(source, lineno=lineno)
     return fixed_source
 
 def assist(project, source, position, filename):
