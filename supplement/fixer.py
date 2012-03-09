@@ -92,7 +92,7 @@ def find_prev_block_start(lines, lineno):
 
     return None
 
-def try_to_fix(error, code):
+def try_to_fix(error, code, lineno):
     if type(error) == SyntaxError:
         before, line, after = get_lines(code, error.lineno)
 
@@ -139,16 +139,16 @@ def try_to_fix(error, code):
 
     return code, None
 
-def fix(code, tries=10):
+def fix(code, lineno=0, tries=10):
     try:
         return ast.parse(code), code
-    except Exception, e:
+    except IndentationError, e:
         tries -= 1
         if tries <= 0:
             raise
 
-        code, fixed_location = try_to_fix(e, code)
-        if fixed_location:
-            return fix(code, tries)
+        code, fixed_location = try_to_fix(e, code, lineno)
+        if fixed_location and e.lineno == lineno:
+            return fix(code, lineno, tries)
         else:
             raise
