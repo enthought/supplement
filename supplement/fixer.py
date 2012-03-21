@@ -142,13 +142,13 @@ def try_to_fix(error, code, lineno):
 def fix(code, lineno=0, tries=10):
     try:
         return ast.parse(code), code
-    except IndentationError, e:
+    except (SyntaxError, IndentationError), e:
         tries -= 1
         if tries <= 0:
             raise
 
         code, fixed_location = try_to_fix(e, code, lineno)
         if fixed_location and e.lineno == lineno:
-            return fix(code, lineno, tries)
+            return fix(code, lineno=lineno, tries=tries)
         else:
             raise
