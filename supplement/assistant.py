@@ -284,7 +284,7 @@ def assist(project, source, position, filename):
     ctx_type, lineno, ctx, match, fctx = get_context(source, position)
     if ctx_type == 'expr':
         source = sanitize_encoding(source)
-        ast_nodes, fixed_source = fix(source)
+        ast_nodes, fixed_source = fix(source, lineno=lineno)
 
         scope = get_scope_at(project, fixed_source, lineno, filename, ast_nodes)
         project.calldb.collect_calls(scope.get_toplevel(), True)
@@ -325,7 +325,7 @@ def get_location(project, source, position, filename):
 
     if ctx_type == 'expr':
         source = sanitize_encoding(source)
-        ast_nodes, fixed_source = fix(source)
+        ast_nodes, fixed_source = fix(source, lineno=lineno)
         scope = get_scope_at(project, fixed_source, lineno, filename, ast_nodes)
         if not ctx:
             obj = scope.find_name(match, lineno)
@@ -360,7 +360,7 @@ def get_docstring(project, source, position, filename):
     ctx_type, lineno, ctx, match, fctx = get_context(source, position)
     if ctx_type == 'expr' and fctx:
         source = sanitize_encoding(source)
-        ast_nodes, fixed_source = fix(source)
+        ast_nodes, fixed_source = fix(source, lineno=lineno)
         scope = get_scope_at(project, fixed_source, lineno, filename, ast_nodes)
         obj = infer(fctx, scope, lineno)
 
