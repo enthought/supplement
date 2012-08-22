@@ -1,4 +1,5 @@
 import sys
+import os
 import os.path
 import optparse
 import logging
@@ -12,11 +13,14 @@ except ImportError:
     from pickle import loads, dumps
 
 try:
-    # Don't import supplement since that might be the wrong supplement
-    # version -- this happens when the server is run using a different version
-    # of Python.  Instead, use our path and have the imp module import it.
-    supplement = imp.load_module('supplement', None, os.path.dirname(__file__),
-                                 ("", "", imp.PKG_DIRECTORY))
+    if os.environ.get('CANOPY_SHARED_SUPPLEMENT', 'True') == 'True':
+        # Don't import supplement since that might be the wrong supplement
+        # version -- this happens when the server is run using a different version
+        # of Python.  Instead, use our path and have the imp module import it.
+        supplement = imp.load_module('supplement', None, os.path.dirname(__file__),
+                                     ("", "", imp.PKG_DIRECTORY))
+    else:
+        import supplement
 except ImportError:
     fname = os.__file__
     if fname.endswith('.pyc'):
