@@ -3,6 +3,7 @@ from ast import NodeVisitor, Load, parse, Name as AstName, dump
 from tokenize import NL, NEWLINE, ERRORTOKEN, INDENT, DEDENT, generate_tokens, TokenError, NAME
 from keyword import iskeyword
 from contextlib import contextmanager
+from itertools import chain
 
 from .fixer import try_to_fix, sanitize_encoding
 
@@ -57,9 +58,17 @@ def check_names(source, tree):
 
     return result
 
+def extract_names_from_node(node):
+    if isinstance(node, AstName):
+        yield node
+    else:
+        for n in node.elts:
+            for name in extract_names_from_node(n):
+                yield name
+
 
 class Name(object):
-    def __init__(self, name, line, offset, indirect_use=False):
+    def __init__(self, name, line, offset, indirect_use=False, is_local=False):
         self.name = name
         self.line = line
         self.offset = offset
@@ -67,6 +76,7 @@ class Name(object):
         self.indirect_use = indirect_use
         self.declared_at_loop = None
         self.branch = None
+        self.is_local = is_local
 
     def is_used(self):
         if self.indirect_use or self.usages:
@@ -83,6 +93,19 @@ class Name(object):
     def __repr__(self):
         return "Name(%s, %s, %s, %s, %s)" % (self.name, self.line, self.offset,
             self.indirect_use, self.declared_at_loop)
+
+
+#def dump_branches(root, level=0):
+#    if not root:
+#        return
+#
+#    print '   ' * level, 'main'
+#    print '   ' * (level + 1), root.names
+#    for c in root.children:
+#        dump_branches(c, level+1)
+#
+#    print '   ' * level, 'else'
+#    dump_branches(root.orelse, level+1)
 
 
 class Branch(object):
@@ -189,7 +212,7 @@ class Scope(object):
 
         return None
 
-    def get_names_for_branch(self, branch, name, line=None, offset=None):
+    def _get_branch_names(self, branch, name, line=None, offset=None):
         result = []
         idx = -1
         if name in self.names:
@@ -212,6 +235,10 @@ class Scope(object):
 
             idx -= 1
 
+        return result
+
+    def get_names_for_branch(self, branch, name, line=None, offset=None):
+        result = self._get_branch_names(branch, name, line, offset)
         if not result:
             n = self.parent.get_name(name)
             if n:
@@ -228,6 +255,26 @@ class Scope(object):
             for name in c.get_names():
                 yield name
 
+
+class PassScope(Scope):
+    def __init__(self, parent=None, is_block=True, passthrough=False):
+        Scope.__init__(self, parent, is_block, passthrough)
+        self.branch = parent.branch
+
+    def add_name(self, name, starts=None):
+        if name.is_local:
+            return Scope.add_name(self, name, starts)
+        else:
+            return self.parent.add_name(name, starts)
+
+    def get_names_for_branch(self, branch, name, line=None, offset=None):
+        result = self._get_branch_names(branch, name, line, offset)
+        if not result:
+            return self.parent.get_names_for_branch(branch, name, line, offset)
+
+        return result
+
+
 class GetExprEnd(NodeVisitor):
     def __call__(self, node):
         self.visit(node)
@@ -235,6 +282,7 @@ class GetExprEnd(NodeVisitor):
 
     def visit_Name(self, node):
         self.last_loc = node.lineno, node.col_offset + len(node.id)
+
 
 class NameExtractor(NodeVisitor):
     def process(self, root, idx_name_extractor):
@@ -248,6 +296,8 @@ class NameExtractor(NodeVisitor):
         self.declared_at_loop = False
 
         self.generic_visit(root)
+
+        #dump_branches(self.scope.childs[0].branch)
 
         return self.usages, self.main_scope
 
@@ -332,7 +382,9 @@ class NameExtractor(NodeVisitor):
         if type(node.ctx) == Load:
             self.add_usage(node.id, node.lineno, node.col_offset)
         else:
-            name = self.scope.add_name(Name(node.id, node.lineno, node.col_offset, self.indirect_use),
+            name = self.scope.add_name(
+                Name(node.id, node.lineno, node.col_offset, self.indirect_use,
+                    getattr(node, 'is_local', False)),
                 self.effect_starts)
 
             if self.declared_at_loop:
@@ -350,7 +402,7 @@ class NameExtractor(NodeVisitor):
         self.scope = self.scope.parent
 
     def visit_FunctionDef(self, node):
-        line, offset = self.idx_name_extractor.get(node.lineno, 0)
+        line, offset = self.idx_name_extractor.get_first_after(node.lineno, 'def')
         self.scope.add_name(Name(node.name, line, offset,
             self.indirect_use or self.is_main_scope()))
         self.scope = Scope(self.scope)
@@ -363,7 +415,7 @@ class NameExtractor(NodeVisitor):
         self.scope = self.scope.parent
 
     def visit_ClassDef(self, node):
-        line, offset = self.idx_name_extractor.get(node.lineno, 0)
+        line, offset = self.idx_name_extractor.get_first_after(node.lineno, 'class')
         self.scope.add_name(Name(node.name, line, offset,
             self.indirect_use or self.is_main_scope()))
         self.scope = Scope(self.scope, passthrough=True)
@@ -384,21 +436,7 @@ class NameExtractor(NodeVisitor):
     def visit_For(self, node):
         start = node.body[0]
         with self.loop((start.lineno, start.col_offset), self.get_expr_end(node)):
-            self.visit(node.target)
-            self.visit(node.iter)
-
-            oldbranch = self.scope.branch
-            branch = oldbranch.add_child(Branch(oldbranch))
-
-            self.scope.branch = branch
-            for r in node.body:
-                self.visit(r)
-
-            self.scope.branch = branch.create_orelse()
-            for r in node.orelse:
-                self.visit(r)
-
-            self.scope.branch = oldbranch
+            self.process_alternates([node.target, node.iter], node.body, node.orelse)
 
     def visit_While(self, node):
         with self.loop((node.lineno, node.col_offset), self.get_expr_end(node)):
@@ -413,24 +451,71 @@ class NameExtractor(NodeVisitor):
 
         self.generic_visit(node)
 
-    def visit_If(self, node):
-        self.visit(node.test)
+    def process_alternates(self, before, main, orelse):
+        for node in before:
+            self.visit(node)
 
         oldbranch = self.scope.branch
         branch = oldbranch.add_child(Branch(oldbranch))
 
         self.scope.branch = branch
-        for r in node.body:
+        for r in main:
             self.visit(r)
 
         self.scope.branch = branch.create_orelse()
-        for r in node.orelse:
+        for r in orelse:
             self.visit(r)
 
         self.scope.branch = oldbranch
 
+    def visit_If(self, node):
+        self.process_alternates([node.test], node.body, node.orelse)
+
+    def visit_TryExcept(self, node):
+        oldbranch = self.scope.branch
+        branch = oldbranch.add_child(Branch(oldbranch))
+
+        self.scope.branch = branch
+        for r in chain(node.body, node.orelse):
+            self.visit(r)
+
+        for h in node.handlers:
+            branch = branch.create_orelse()
+            self.scope.branch = branch
+            self.visit(h)
+
+        self.scope.branch = oldbranch
+
+    def visit_ExceptHandler(self, node):
+        self.scope = PassScope(self.scope)
+        self.scope.lineno = node.lineno
+        self.scope.offset = node.col_offset
+
+        if node.name:
+            node.name.is_local = True
+
+        with self.indirect(False):
+            self.generic_visit(node)
+
+        self.scope = self.scope.parent
+
+    def visit_With(self, node):
+        self.scope = PassScope(self.scope)
+        self.scope.lineno = node.lineno
+        self.scope.offset = node.col_offset
+
+        if node.optional_vars:
+            for name in extract_names_from_node(node.optional_vars):
+                name.is_local = True
+
+        with self.indirect(False):
+            self.generic_visit(node)
+
+        self.scope = self.scope.parent
+
     def is_main_scope(self):
         return self.scope is self.main_scope
+
 
 class TokenGenerator(object):
     def __init__(self, lines):
@@ -498,5 +583,17 @@ class IdxNameExtractor(object):
                 i += 1
                 if i == idx:
                     return start[0] + lineno - 1, start[1]
+
+        return lineno, 0
+
+    def get_first_after(self, lineno, keyword):
+        tg = TokenGenerator(self.lines[lineno-1:])
+        while True:
+            tid, value, start, _ = tg.next()
+            if value == keyword:
+                while True:
+                    tid, value, start, _ = tg.next()
+                    if tid == NAME and not iskeyword(value):
+                        return start[0] + lineno - 1, start[1]
 
         return lineno, 0
