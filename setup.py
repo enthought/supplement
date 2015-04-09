@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name     = 'supplement',
-    version  = '0.5dev',
+    version  = '0.5.dev0',
     author   = 'Anton Bobrov',
     author_email = 'bobrov@vl.ru',
     description = 'Python code completion library',
