@@ -242,10 +242,12 @@ def prep_tokens(tokens):
     for tid, value in tokens:
         newpos = pos + len(value)
         result.append((tid, value, (1, pos), (1, newpos), ''))
+        pos = newpos
 
     return result
 
 def get_context(source, position):
+    print 'Get context ({1}) "{0}"'.format(source, position)
     lines, lineno = get_block(source, position)
 
     tokens = TokenGenerator(lines)
@@ -253,6 +255,8 @@ def get_context(source, position):
     while True:
         tid, value = tokens.next()
         if not tid: break
+
+        print 'Token ', tid, value
 
         if tid == NAME and value == 'import':
             ctype, fctx = 'import', None
@@ -266,7 +270,11 @@ def get_context(source, position):
             ctype = 'expr'
             tokens.hold(tid, value)
             ctx, match, fctx = parse_expr(tokens)
+            print 'ctx', ctx
+            print 'ctx', prep_tokens(ctx)
             ctx = untokenize(prep_tokens(ctx)).strip().rstrip('.')
+            print 'fctx', fctx
+            print 'fctx', prep_tokens(fctx)
             fctx = untokenize(prep_tokens(fctx)).strip().rstrip('.')
 
         else:
