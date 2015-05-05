@@ -242,6 +242,7 @@ def prep_tokens(tokens):
     for tid, value in tokens:
         newpos = pos + len(value)
         result.append((tid, value, (1, pos), (1, newpos), ''))
+        pos = newpos
 
     return result
 
