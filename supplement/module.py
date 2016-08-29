@@ -58,11 +58,11 @@ class ModuleProvider(object):
         for o in self.override:
             m = o(project, m)
 
-        self.cache[name] = m
-
         filename = m.filename
         if filename:
             project.monitor.monitor(filename, self.on_file_change, name)
+
+        self.cache[name] = m
 
         return m
 
@@ -279,4 +279,3 @@ class DynScope(Scope):
                 pass
 
         return Scope.get_name(self, name, lineno)
-
